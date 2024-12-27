@@ -1,5 +1,7 @@
 import express from "express";
 import cors from "cors";
+import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 
 import connection, { dbName } from "./connection.js";
 
@@ -12,19 +14,125 @@ app.use(express.json());
 app.use(cors({ origin: "*" }))
 
 
-app.post('/expenses', (req, res) => {
-    const { date, description, amount } = req.body;
-    console.log('Received data:', { date, description, amount });
 
-    // Here, you can process or save the data to a database
-    db.collection('expenses').insertOne({date, description, amount})
-    
-    res.status(200).json({ message: 'Expense added successfully' });
+const users = [
+    { username: "aditya11", password: bcrypt.hashSync("1122", 10) },
+    { username: "ritika11", password: bcrypt.hashSync("1122", 10) },
+    { username: "kabir11", password: bcrypt.hashSync("1122", 10) },
+    { username: "rahul11", password: bcrypt.hashSync("1122", 10) },
+];
+
+
+// Middleware to authenticate and decode JWT token
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers.authorization;
+    if (!authHeader) return res.status(401).json({ message: "Token required" });
+
+    const token = authHeader.split(" ")[1];
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.status(403).json({ message: "Invalid token" });
+        req.user = user; // Attach the decoded user to the request
+        next();
+    });
+};
+
+// Secret key for signing JWTs
+const JWT_SECRET = "your_jwt_secret_key";
+
+app.post("/api/authenticate", (req, res) => {
+    const { username, password } = req.body;
+
+    if (!username || !password) {
+        return res.status(400).json({ message: "Username and password are required." });
+    }
+
+    // Find user by username
+    const user = users.find((u) => u.username === username);
+
+    if (!user || !bcrypt.compareSync(password, user.password)) {
+        return res.status(401).json({ message: "Invalid username or password." });
+    }
+
+    // Generate a JWT token
+    const token = jwt.sign({ username: user.username }, JWT_SECRET, { expiresIn: "1h" });
+
+    res.status(200).json({ message: "Login successful!", token });
 });
-app.get('/data', async(req,res)=>{
-    const data = await db.collection('expenses').find().toArray();
+
+// Protected route
+app.get("/api/protected", (req, res) => {
+    const authHeader = req.headers.authorization;
+
+    if (!authHeader || !authHeader.startsWith("Bearer ")) {
+        return res.status(401).json({ message: "No token provided." });
+    }
+
+    const token = authHeader.split(" ")[1];
+
+    try {
+        const decoded = jwt.verify(token, JWT_SECRET);
+        res.status(200).json({ message: "Access granted to protected route.", user: decoded });
+    } catch (error) {
+        res.status(401).json({ message: "Invalid or expired token." });
+    }
+});
+
+
+
+// Save expenses based on username
+app.post("/expenses", authenticateToken, async (req, res) => {
+    const { username } = req.user;
+    console.log(username);
+    const { date, description, amount } = req.body;
+
+    if (!date || !description || !amount) {
+        return res.status(400).json({ message: "All fields are required." });
+    }
+
+    let collectionName = "";
+    if(username == 'aditya11'){
+        collectionName = 'expenses'
+    }
+    else if(username == 'ritika11'){
+        collectionName = 'expensesRitika'
+    }
+    else if(username == 'rahul11'){
+        collectionName = 'expensesRahul'
+    }
+    else if(username == 'kabir11'){
+        collectionName = 'expensesKabir'
+    }
+
+
+    try {
+        await db.collection(collectionName).insertOne({ date, description, amount });
+        res.status(200).json({ message: "Expense added successfully" });
+    } catch (error) {
+        res.status(500).json({ message: "Failed to save expense", error });
+    }
+
+});
+app.get('/data',authenticateToken, async(req,res)=>{
+    const { username } = req.user;
+    console.log(username)
+    let collectionName = "";
+    if(username == 'aditya11'){
+        collectionName = 'expenses'
+    }
+    else if(username == 'ritika11'){
+        collectionName = 'expensesRitika'
+    }
+    else if(username == 'rahul11'){
+        collectionName = 'expensesRahul'
+    }
+    else if(username == 'kabir11'){
+        collectionName = 'expensesKabir'
+    }
+
+    const data = await db.collection(collectionName).find().toArray();
     res.send(data);
 })
+
 
 connection.then((client) => {
     db = client.db(dbName)

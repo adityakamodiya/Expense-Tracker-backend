@@ -133,6 +133,43 @@ app.get('/data',authenticateToken, async(req,res)=>{
     res.send(data);
 })
 
+// Delete an expense based on the logged-in user
+app.delete('/:id', authenticateToken, async (req, res) => {
+    try {
+        const { username } = req.user;
+        console.log(`Deleting expense for user: ${username}`);
+
+        const expenseId = req.params;
+        let collectionName = getCollectionName(username);
+
+        if (!collectionName) {
+            return res.status(404).send({ message: 'User not recognized.' });
+        } 
+
+        // Delete the expense document
+        const result = await db.collection(collectionName).deleteOne({ _id: expenseId });
+
+        if (result.deletedCount === 0) {
+            return res.status(404).send({ message: 'Expense not found.' });
+        }
+
+        res.send({ message: 'Expense deleted successfully.' });
+    } catch (error) {
+        console.error('Error deleting expense:', error);
+        res.status(500).send({ message: 'Error deleting expense.' });
+    }
+});
+
+// Helper function to get collection name based on username
+function getCollectionName(username) {
+    const userCollections = {
+        'aditya11': 'expenses',
+        'ritika11': 'expensesRitika',
+        'rahul11': 'expensesRahul',
+        'kabir11': 'expensesKabir'
+    };
+    return userCollections[username] || null;
+}
 
 connection.then((client) => {
     db = client.db(dbName)
